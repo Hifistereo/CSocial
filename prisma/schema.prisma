@@ -1,0 +1,126 @@
+// CSocial — parent-controlled safe video feed.
+// Enum-like fields are String columns (SQLite has no enums); the allowed
+// values live in src/lib/enums.ts and are validated with zod at the edges.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// The parent account. One User = one family in the MVP.
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  passwordHash       String
+  pinHash            String? // parent re-unlock PIN; password is the fallback when null
+  tokenVersion       Int      @default(0)
+  watchRetentionDays Int      @default(90)
+  createdAt          DateTime @default(now())
+
+  children     ChildProfile[]
+  contentItems ContentItem[]
+  auditLogs    AuditLog[]
+}
+
+model ChildProfile {
+  id                String   @id @default(cuid())
+  familyId          String
+  nickname          String
+  ageBand           String // AGE_4_6 | AGE_7_9 | AGE_10_12
+  allowedCategories String // JSON array of Category values
+  avatarColor       String   @default("blue")
+  createdAt         DateTime @default(now())
+
+  family      User         @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  watchEvents WatchEvent[]
+  favorites   Favorite[]
+  flags       ChildFlag[]
+
+  @@index([familyId])
+}
+
+model ContentItem {
+  id              String   @id @default(cuid())
+  familyId        String
+  source          String   @default("YOUTUBE")
+  videoId         String // YouTube 11-char id; the media itself is never stored
+  title           String
+  channelName     String
+  thumbnailUrl    String
+  durationSec     Int?
+  category        String // Category value
+  ageBand         String // target band assigned by the parent
+  language        String   @default("en")
+  status          String   @default("PENDING") // PENDING | APPROVED | REJECTED | REVOKED
+  statusChangedAt DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  family      User         @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  watchEvents WatchEvent[]
+  favorites   Favorite[]
+  flags       ChildFlag[]
+
+  @@unique([familyId, videoId])
+  @@index([familyId, status])
+}
+
+model WatchEvent {
+  id             String   @id @default(cuid())
+  childId        String
+  contentItemId  String
+  watchedAt      DateTime @default(now())
+  secondsWatched Int      @default(0)
+  completed      Boolean  @default(false)
+
+  child       ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  contentItem ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@index([childId, watchedAt])
+}
+
+model Favorite {
+  id            String   @id @default(cuid())
+  childId       String
+  contentItemId String
+  createdAt     DateTime @default(now())
+
+  child       ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  contentItem ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@unique([childId, contentItemId])
+}
+
+// Child signals to the parent: "more like this" or "I don't like this".
+model ChildFlag {
+  id            String   @id @default(cuid())
+  childId       String
+  contentItemId String
+  type          String // MORE_LIKE_THIS | REPORT
+  resolved      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  child       ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  contentItem ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@index([childId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  familyId   String
+  actorType  String // PARENT | CHILD | SYSTEM
+  actorId    String
+  action     String // VIDEO_APPROVED, CHILD_CREATED, ...
+  entityType String
+  entityId   String
+  meta       String? // JSON
+  createdAt  DateTime @default(now())
+
+  family User @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId, createdAt])
+}
