@@ -19,27 +19,41 @@ export function FeedClient({ nickname }: { nickname: string }) {
   const [started, setStarted] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [showExit, setShowExit] = useState(false);
+  const [favoritesMode, setFavoritesMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fetchingRef = useRef(false);
 
-  const loadMore = useCallback(async (replace = false) => {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-    try {
-      const res = await fetch("/api/child/feed");
-      if (res.ok) {
-        const data = (await res.json()) as { items: FeedItem[] };
-        setItems((prev) => (replace ? data.items : [...prev, ...data.items]));
+  const loadMore = useCallback(
+    async (replace = false, favorites = favoritesMode) => {
+      if (fetchingRef.current) return;
+      fetchingRef.current = true;
+      try {
+        const res = await fetch(
+          favorites ? "/api/child/favorites" : "/api/child/feed"
+        );
+        if (res.ok) {
+          const data = (await res.json()) as { items: FeedItem[] };
+          setItems((prev) => (replace ? data.items : [...prev, ...data.items]));
+        }
+      } finally {
+        fetchingRef.current = false;
+        setLoaded(true);
       }
-    } finally {
-      fetchingRef.current = false;
-      setLoaded(true);
-    }
-  }, []);
+    },
+    [favoritesMode]
+  );
 
   useEffect(() => {
     loadMore(true);
-  }, [loadMore]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function switchMode(favorites: boolean) {
+    setFavoritesMode(favorites);
+    setActiveIndex(0);
+    containerRef.current?.scrollTo({ top: 0 });
+    loadMore(true, favorites);
+  }
 
   // Observe which slide fills the viewport -> that one plays.
   useEffect(() => {
@@ -64,12 +78,12 @@ export function FeedClient({ nickname }: { nickname: string }) {
     return () => observer.disconnect();
   }, [items.length, started]);
 
-  // Fetch the next batch as the child approaches the end.
+  // Fetch the next batch as the child approaches the end (endless feed only).
   useEffect(() => {
-    if (items.length > 0 && activeIndex >= items.length - 3) {
+    if (!favoritesMode && items.length > 0 && activeIndex >= items.length - 3) {
       loadMore();
     }
-  }, [activeIndex, items.length, loadMore]);
+  }, [activeIndex, items.length, loadMore, favoritesMode]);
 
   const advance = useCallback(() => {
     const container = containerRef.current;
@@ -129,8 +143,33 @@ export function FeedClient({ nickname }: { nickname: string }) {
         <span className="rounded-full bg-black/40 px-3 py-1 text-sm font-semibold text-white">
           {nickname}
         </span>
-        <ExitCorner onExit={() => setShowExit(true)} />
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            onClick={() => switchMode(!favoritesMode)}
+            className={`flex h-9 items-center gap-1 rounded-full px-3 text-sm font-semibold ${
+              favoritesMode ? "bg-pink-500 text-white" : "bg-black/40 text-white"
+            }`}
+            aria-label="My favorites"
+          >
+            ❤️ {favoritesMode ? "Favorites" : ""}
+          </button>
+          <ExitCorner onExit={() => setShowExit(true)} />
+        </div>
       </div>
+      {favoritesMode && items.length === 0 && loaded && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-950 text-center">
+          <div className="text-4xl">🤍</div>
+          <p className="max-w-xs text-slate-300">
+            No favorites yet — tap the heart on videos you love!
+          </p>
+          <button
+            onClick={() => switchMode(false)}
+            className="rounded-full bg-indigo-500 px-6 py-2 font-semibold text-white"
+          >
+            Back to videos
+          </button>
+        </div>
+      )}
       {showExit && <ExitDialog onClose={() => setShowExit(false)} />}
     </main>
   );
