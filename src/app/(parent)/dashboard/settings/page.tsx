@@ -1,10 +1,22 @@
-export default function SettingsPage() {
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { getPageSession } from "@/lib/session-server";
+import { SettingsView } from "./settings-view";
+
+export default async function SettingsPage() {
+  const session = await getPageSession();
+  if (!session || session.scope === "child") redirect("/login");
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { email: true, pinHash: true, watchRetentionDays: true },
+  });
+  if (!user) redirect("/login");
+
   return (
-    <div>
-      <h1 className="text-xl font-bold text-slate-900">Settings</h1>
-      <p className="mt-4 text-sm text-slate-500">
-        PIN, privacy and account settings will appear here.
-      </p>
-    </div>
+    <SettingsView
+      email={user.email}
+      hasPin={Boolean(user.pinHash)}
+      watchRetentionDays={user.watchRetentionDays}
+    />
   );
 }

@@ -24,6 +24,13 @@ export const POST = api(async (req) => {
   }
   clearRateLimit(`login:${email}`);
 
+  // Opportunistic GDPR retention cleanup: purge this family's watch history
+  // older than the configured window (no cron needed at pilot scale).
+  const cutoff = new Date(Date.now() - user.watchRetentionDays * 24 * 3600_000);
+  await prisma.watchEvent.deleteMany({
+    where: { watchedAt: { lt: cutoff }, child: { familyId: user.id } },
+  });
+
   return jsonWithSession(
     { userId: user.id },
     unlockedParentClaims(user.id, user.tokenVersion)

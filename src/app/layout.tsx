@@ -16,6 +16,12 @@ export const metadata: Metadata = {
   title: "CSocial — Safe videos for kids",
   description:
     "A parent-curated short-video feed for children. Kids only see videos their parents have approved.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CSocial",
+  },
 };
 
 export const viewport: Viewport = {
